@@ -4,6 +4,11 @@ import {
 	resolveConfigPath,
 } from "@forgebot/config";
 import { runPlugins } from "@forgebot/core";
+import {
+	GitHubAppAuth,
+	GitHubClientFactory,
+	loadGitHubAppConfig,
+} from "@forgebot/github";
 import createLogger, { type Logger } from "@forgebot/logger";
 import { createPluginsFromConfig } from "./plugins/create-plugins-from-config.ts";
 import { pluginRegistry } from "./plugins/plugin-registry.ts";
@@ -53,6 +58,12 @@ export default async function createDependencies() {
 		type: "console",
 		output: console,
 	});
+	const gitHubAppConfig = await loadGitHubAppConfig(process.env);
+	const gitHubAppAuth = new GitHubAppAuth({ config: gitHubAppConfig, logger });
+	const gitHubClientFactory = new GitHubClientFactory({
+		auth: gitHubAppAuth,
+		logger,
+	});
 	const config = await loadInstanceConfig(logger);
 
 	const plugins = createPluginsFromConfig(config, pluginRegistry);
@@ -64,6 +75,7 @@ export default async function createDependencies() {
 	);
 
 	return {
+		gitHubClientFactory,
 		gitHubWebhookService,
 	};
 }

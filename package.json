@@ -12,6 +12,7 @@
 		"test": "bun run test:unit && bun run test:integration",
 		"test:unit": "bun test ./packages ./apps/*/src",
 		"test:integration": "bun test ./apps/*/test/integration",
+		"test:smoke": "FORGEBOT_GITHUB_SMOKE=1 bun test ./packages/github/src/github-app.smoke.test.ts",
 		"typecheck": "tsc --noEmit",
 		"check": "bun run typecheck && bun run test:unit && bun run test:integration && bun run lint"
 	},

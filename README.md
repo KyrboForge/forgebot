@@ -28,6 +28,7 @@ Project documentation is available in the [`docs`](./docs) directory.
 - 🗺️ [Roadmap](./docs/ROADMAP.md)
 - 📝 [Architecture Decision Records](./docs/adr/README.md)
 - 🤖 [AI Context](./docs/AI_CONTEXT.md)
+- [GitHub App setup](./docs/GITHUB_APP.md)
 
 ## Project Structure
 ```mermaid

@@ -1,8 +1,10 @@
 import { describe, expect, it, mock } from "bun:test";
 import createApp from "../../src/app.ts";
+import { createGitHubClientFactory } from "./github-app.fixture.ts";
 
 describe("/health", () => {
 	const app = createApp({
+		gitHubClientFactory: createGitHubClientFactory(),
 		gitHubWebhookService: {
 			handleWebhook: mock(),
 		},
