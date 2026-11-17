@@ -42,7 +42,7 @@ GITHUB_APP_INSTALLATION_ID=789012
 FORGEBOT_SMOKE_REPOSITORY=your-owner/your-repo
 ```
 
-For inline configuration, omit `GITHUB_APP_PRIVATE_KEY_PATH` and set `GITHUB_APP_PRIVATE_KEY` to the full PEM (for example, a single quoted value containing literal `\n` between lines). Never commit PEM text or real credentials to examples. Configuration errors report variable names only; a structurally valid but malformed key is detected when the first JWT is signed.
+For inline configuration, omit `GITHUB_APP_PRIVATE_KEY_PATH` and set `GITHUB_APP_PRIVATE_KEY` to the full PEM (for example, a single quoted value containing literal `\n` between lines). Never commit PEM text or real credentials to examples. Configuration loading parses the private key and requires RSA; malformed keys and other key types are rejected with errors naming only the key source variable.
 
 ## Verify
 
@@ -61,7 +61,7 @@ bun run test:smoke
 FORGEBOT_SMOKE_REPOSITORY=your-owner/your-repo bun run test:smoke
 ```
 
-The script sets `FORGEBOT_GITHUB_SMOKE=1`. It creates a short-lived installation token, verifies repository access, reads minimal repository metadata, and checks the installation's permissions using an App JWT. It does not modify repository content or create comments/reviews. Permission checks require only `metadata:read`, `contents:read`, and `pull_requests:write`; stronger grants satisfy the check but are unnecessary.
+The script sets `FORGEBOT_GITHUB_SMOKE=1`. It creates a short-lived installation token, verifies repository selection and reads minimal metadata from the installation's accessible repositories, then checks the installation's permissions using an App JWT. Repository verification and metadata lookup paginate `GET /installation/repositories` with 100 repositories per page, match `owner/repo` case-insensitively, and stop at the first match. An absent repository returns `REPOSITORY_ACCESS_DENIED`, including public repositories outside the installation's selection. No separate `GET /repos/{owner}/{repo}` request is made. The test does not modify repository content or create comments/reviews. Permission checks require only `metadata:read`, `contents:read`, and `pull_requests:write`; stronger grants satisfy the check but are unnecessary.
 
 Programmatic usage:
 
@@ -77,7 +77,7 @@ const repository = await client.getRepository("owner", "repo");
 const permissions = await client.checkReviewPermissions();
 ```
 
-Tokens are cached per installation and refreshed below five minutes remaining. Concurrent requests share one token request per installation. A repository API 401 invalidates only that installation's token; the error is returned, and the next call obtains a fresh token. There is no automatic replay of failed API requests.
+Tokens are cached per installation and refreshed below five minutes remaining. Concurrent requests share one token request per installation. A repository API 401 invalidates the cached token only if it matches the token sent by the failed request. A newer cached token or in-flight renewal survives a delayed 401. The error is returned; the next call reuses a valid token or obtains a fresh one. There is no automatic replay of failed API requests.
 
 ## Deployment and security
 

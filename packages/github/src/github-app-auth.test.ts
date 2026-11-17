@@ -118,7 +118,7 @@ describe("GitHub App auth", () => {
 		expect((await auth.getInstallationToken(2)).token).toBe(
 			"second-installation",
 		);
-		auth.invalidate(1);
+		auth.invalidate(1, "rejected-token");
 		expect((await auth.getInstallationToken(2)).token).toBe(
 			"second-installation",
 		);
@@ -135,7 +135,7 @@ describe("GitHub App auth", () => {
 		).toEqual(["app-a", "app-b"]);
 	});
 
-	it("does not repopulate the cache with an invalidated in-flight request", async () => {
+	it("keeps an in-flight token request when an older token is invalidated", async () => {
 		let release: (() => void) | undefined;
 		const barrier = new Promise<void>((resolve) => {
 			release = resolve;
@@ -147,12 +147,25 @@ describe("GitHub App auth", () => {
 			return tokenResponse(`token-${call}`);
 		});
 		const pending = auth.getInstallationToken(1);
-		auth.invalidate(1);
+		auth.invalidate(1, "older-token");
 		const fresh = auth.getInstallationToken(1);
+		expect(fresh).toBe(pending);
 		release?.();
 		await pending;
-		expect((await fresh).token).toBe("token-2");
+		expect((await fresh).token).toBe("token-1");
+		expect((await auth.getInstallationToken(1)).token).toBe("token-1");
+		expect(calls).toBe(1);
+	});
+
+	it("invalidates only the cached token that was rejected", async () => {
+		let calls = 0;
+		const { auth } = setup(() => tokenResponse(`token-${++calls}`));
+		await auth.getInstallationToken(1);
+		auth.invalidate(1, "token-1");
 		expect((await auth.getInstallationToken(1)).token).toBe("token-2");
+		auth.invalidate(1, "token-1");
+		expect((await auth.getInstallationToken(1)).token).toBe("token-2");
+		expect(calls).toBe(2);
 	});
 
 	it("detects a malformed private key during signing without leaking it", async () => {
@@ -178,7 +191,7 @@ describe("GitHub App auth", () => {
 	it("logs only installation IDs, expiry and actions, never credentials", async () => {
 		const { auth, logger } = setup(() => tokenResponse("unique-secret-token"));
 		await auth.getInstallationToken(1);
-		auth.invalidate(1);
+		auth.invalidate(1, "unique-secret-token");
 		for (const method of [
 			logger.debug,
 			logger.info,

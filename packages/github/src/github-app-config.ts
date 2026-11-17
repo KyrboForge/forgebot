@@ -1,3 +1,4 @@
+import { createPrivateKey } from "node:crypto";
 import {
 	GitHubAppConfigError,
 	type GitHubAppConfigVariable,
@@ -34,15 +35,16 @@ export async function loadGitHubAppConfig(
 		try {
 			privateKey = (
 				path !== undefined ? await Bun.file(path).text() : (inline ?? "")
-			).replaceAll("\\n", "\n");
+			).replaceAll(String.raw`\n`, "\n");
 		} catch {
 			// File errors can contain sensitive paths; report only the variable name.
 		}
-		if (
-			!/^-----BEGIN (RSA )?PRIVATE KEY-----\r?\n[\s\S]+\r?\n-----END \1PRIVATE KEY-----\s*$/.test(
-				privateKey,
-			)
-		) {
+		try {
+			const keyObject = createPrivateKey(privateKey);
+			if (keyObject.asymmetricKeyType !== "rsa") {
+				invalid.push(keyVariable);
+			}
+		} catch {
 			invalid.push(keyVariable);
 		}
 	}

@@ -27,13 +27,16 @@ function setup(
 }
 
 describe("GitHub installation clients", () => {
-	it("provides minimal repository metadata and verifies access using the installation token", async () => {
+	it("provides minimal metadata and verifies access from the installation repository list", async () => {
 		const authorizations: (string | null)[] = [];
 		const { factory } = setup((request) => {
 			if (request.url.pathname.endsWith("/access_tokens"))
 				return tokenResponse("secret-installation-1");
+			expect(request.method).toBe("GET");
+			expect(request.url.pathname).toBe("/installation/repositories");
+			expect(request.url.searchParams.get("per_page")).toBe("100");
 			authorizations.push(request.authorization);
-			return json(repository);
+			return json({ total_count: 1, repositories: [repository] });
 		});
 		const client = factory.forInstallation(1);
 		await expect(
@@ -53,6 +56,81 @@ describe("GitHub installation clients", () => {
 		]);
 	});
 
+	it("denies an unselected public repository even when repos.get would succeed", async () => {
+		const paths: string[] = [];
+		const { factory } = setup((request) => {
+			if (request.url.pathname.endsWith("/access_tokens"))
+				return tokenResponse("secret-token");
+			paths.push(request.url.pathname);
+			if (request.url.pathname === "/repos/owner/repo")
+				return json({ ...repository, private: false });
+			return json({ total_count: 0, repositories: [] });
+		});
+		const client = factory.forInstallation(1);
+		await expect(
+			client.verifyRepositoryAccess("owner", "repo"),
+		).rejects.toMatchObject({
+			code: "REPOSITORY_ACCESS_DENIED",
+		});
+		await expect(client.getRepository("owner", "repo")).rejects.toMatchObject({
+			code: "REPOSITORY_ACCESS_DENIED",
+		});
+		expect(paths).toEqual([
+			"/installation/repositories",
+			"/installation/repositories",
+		]);
+	});
+
+	it("follows Link pagination to find a repository on page two", async () => {
+		const pages: string[] = [];
+		const { factory } = setup((request) => {
+			if (request.url.pathname.endsWith("/access_tokens"))
+				return tokenResponse("secret-token");
+			expect(request.url.pathname).toBe("/installation/repositories");
+			expect(request.url.searchParams.get("per_page")).toBe("100");
+			expect(request.authorization).toBe("token secret-token");
+			const page = request.url.searchParams.get("page") ?? "1";
+			pages.push(page);
+			if (page === "1")
+				return json(
+					{
+						total_count: 101,
+						repositories: Array.from({ length: 100 }, (_, id) => ({
+							...repository,
+							id,
+							full_name: `owner/other-${id}`,
+						})),
+					},
+					200,
+					{
+						link: '<https://api.github.com/installation/repositories?per_page=100&page=2>; rel="next"',
+					},
+				);
+			return json({ total_count: 101, repositories: [repository] });
+		});
+		expect(
+			await factory.forInstallation(1).getRepository("owner", "repo"),
+		).toMatchObject({ id: 10, fullName: "owner/repo" });
+		expect(pages).toEqual(["1", "2"]);
+	});
+
+	it("matches repository names case-insensitively and stops before the next page", async () => {
+		let calls = 0;
+		const { factory } = setup((request) => {
+			if (request.url.pathname.endsWith("/access_tokens"))
+				return tokenResponse("secret-token");
+			calls++;
+			expect(request.url.searchParams.has("page")).toBe(false);
+			return json({ total_count: 2, repositories: [repository] }, 200, {
+				link: '<https://api.github.com/installation/repositories?per_page=100&page=2>; rel="next"',
+			});
+		});
+		expect(
+			await factory.forInstallation(1).getRepository("OWNER", "Repo"),
+		).toMatchObject({ fullName: "owner/repo" });
+		expect(calls).toBe(1);
+	});
+
 	it("keeps clients, tokens and 401 invalidation scoped to an installation", async () => {
 		const counts = new Map<string, number>();
 		const seen: (string | null)[] = [];
@@ -66,16 +144,14 @@ describe("GitHub installation clients", () => {
 			seen.push(request.authorization);
 			if (deny && request.authorization === "token secret-1-1")
 				return json({ message: "bad credentials secret-1-1" }, 401);
-			return json(repository);
+			return json({ total_count: 1, repositories: [repository] });
 		});
 		const one = factory.forInstallation(1);
 		const two = factory.forInstallation(2);
 		expect(factory.forInstallation(1)).toBe(one);
 		expect(one).not.toBe(two);
-		await Promise.all([
-			one.getRepository("owner", "repo"),
-			two.getRepository("owner", "repo"),
-		]);
+		await one.getRepository("owner", "repo");
+		await two.getRepository("owner", "repo");
 		deny = true;
 		await expect(one.getRepository("owner", "repo")).rejects.toMatchObject({
 			code: "BAD_CREDENTIALS",
@@ -105,7 +181,7 @@ describe("GitHub installation clients", () => {
 						new Date(now + 3_600_000).toISOString(),
 					);
 				seen.push(request.authorization);
-				return json(repository);
+				return json({ total_count: 1, repositories: [repository] });
 			},
 			() => now,
 		);
@@ -114,6 +190,73 @@ describe("GitHub installation clients", () => {
 		now += 3_300_001;
 		await client.getRepository("owner", "repo");
 		expect(seen).toEqual(["token secret-1", "token secret-2"]);
+	});
+
+	it.each([
+		"cached",
+		"in-flight",
+	] as const)("preserves the %s renewal after a delayed 401 for the previous token", async (state) => {
+		let now = Date.now();
+		let tokenCalls = 0;
+		let delayRequest = false;
+		const rejectedResponse = Promise.withResolvers<Response>();
+		const requestStarted = Promise.withResolvers<void>();
+		const renewalResponse = Promise.withResolvers<Response>();
+		const renewalStarted = Promise.withResolvers<void>();
+		const seen: (string | null)[] = [];
+		const { auth, factory } = setup(
+			(request) => {
+				if (request.url.pathname.endsWith("/access_tokens")) {
+					tokenCalls++;
+					if (tokenCalls === 2) {
+						renewalStarted.resolve();
+						return renewalResponse.promise;
+					}
+					return tokenResponse(
+						`secret-${tokenCalls}`,
+						new Date(now + 3_600_000).toISOString(),
+					);
+				}
+				seen.push(request.authorization);
+				if (delayRequest && request.authorization === "token secret-1") {
+					requestStarted.resolve();
+					return rejectedResponse.promise;
+				}
+				return json({ total_count: 1, repositories: [repository] });
+			},
+			() => now,
+		);
+		const client = factory.forInstallation(1);
+		await client.getRepository("owner", "repo");
+		delayRequest = true;
+		const rejected = client.getRepository("owner", "repo");
+		await requestStarted.promise;
+		now += 3_300_001;
+		const renewal = auth.getInstallationToken(1);
+		await renewalStarted.promise;
+		if (state === "cached") {
+			renewalResponse.resolve(
+				tokenResponse("secret-2", new Date(now + 3_600_000).toISOString()),
+			);
+			await renewal;
+		}
+		rejectedResponse.resolve(json({ message: "bad credentials" }, 401));
+		await expect(rejected).rejects.toMatchObject({ code: "BAD_CREDENTIALS" });
+		const surviving = auth.getInstallationToken(1);
+		if (state === "in-flight") {
+			expect(surviving).toBe(renewal);
+			renewalResponse.resolve(
+				tokenResponse("secret-2", new Date(now + 3_600_000).toISOString()),
+			);
+		}
+		expect((await surviving).token).toBe("secret-2");
+		await client.getRepository("owner", "repo");
+		expect(tokenCalls).toBe(2);
+		expect(seen).toEqual([
+			"token secret-1",
+			"token secret-1",
+			"token secret-2",
+		]);
 	});
 
 	it.each([

@@ -32,13 +32,18 @@ export function mockGitHubFetch(
 ): GitHubFetch {
 	return async (input, init) => {
 		const original = input instanceof Request ? input : undefined;
-		return handler({
-			url: new URL(original?.url ?? String(input)),
+		const url = new URL(original?.url ?? String(input));
+		const response = await handler({
+			url,
 			method: init?.method ?? original?.method ?? "GET",
 			authorization: new Headers(init?.headers ?? original?.headers).get(
 				"authorization",
 			),
 		});
+		// Fetch responses include their final URL, which Octokit pagination uses.
+		if (!response.url)
+			Object.defineProperty(response, "url", { value: url.toString() });
+		return response;
 	};
 }
 

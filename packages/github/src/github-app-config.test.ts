@@ -12,6 +12,15 @@ const privateKey = generateKeyPairSync("rsa", {
 	publicKeyEncoding: { type: "spki", format: "pem" },
 }).privateKey;
 
+const ecPrivateKey = generateKeyPairSync("ec", {
+	namedCurve: "prime256v1",
+	privateKeyEncoding: { type: "pkcs8", format: "pem" },
+	publicKeyEncoding: { type: "spki", format: "pem" },
+}).privateKey;
+
+const malformedPrivateKey =
+	"-----BEGIN PRIVATE KEY-----\nmalformed-secret-key\n-----END PRIVATE KEY-----";
+
 describe("GitHub App config", () => {
 	it("loads numeric IDs and normalizes escaped PEM newlines", async () => {
 		expect(
@@ -75,6 +84,14 @@ describe("GitHub App config", () => {
 			{ GITHUB_APP_ID: "9007199254740992", GITHUB_APP_PRIVATE_KEY: privateKey },
 			["GITHUB_APP_ID"],
 		],
+		[
+			{ GITHUB_APP_ID: "1", GITHUB_APP_PRIVATE_KEY: malformedPrivateKey },
+			["GITHUB_APP_PRIVATE_KEY"],
+		],
+		[
+			{ GITHUB_APP_ID: "1", GITHUB_APP_PRIVATE_KEY: ecPrivateKey },
+			["GITHUB_APP_PRIVATE_KEY"],
+		],
 	] as const)("rejects missing/invalid configuration without exposing values: %#", async (env, variables) => {
 		try {
 			await loadGitHubAppConfig(env);
@@ -87,6 +104,8 @@ describe("GitHub App config", () => {
 			const rendered = Bun.inspect(error);
 			for (const secret of [
 				privateKey,
+				ecPrivateKey,
+				"malformed-secret-key",
 				"secret-app",
 				"secret-key",
 				"secret-path",

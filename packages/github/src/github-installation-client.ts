@@ -1,6 +1,6 @@
 import type { Logger } from "@forgebot/logger";
 import { Octokit } from "@octokit/rest";
-import { mapGitHubAppError } from "./github-app.error.ts";
+import { GitHubAppError, mapGitHubAppError } from "./github-app.error.ts";
 import type {
 	GitHubFetch,
 	GitHubInstallationPermissions,
@@ -58,7 +58,7 @@ export class GitHubInstallationClient implements IGitHubInstallationClient {
 				return await request(endpoint);
 			} catch (error) {
 				if ((error as { status?: number } | null)?.status === 401) {
-					options.auth.invalidate(options.installationId);
+					options.auth.invalidate(options.installationId, token);
 				}
 				throw mapGitHubAppError(error, "repository");
 			}
@@ -73,18 +73,28 @@ export class GitHubInstallationClient implements IGitHubInstallationClient {
 		owner: string,
 		repo: string,
 	): Promise<GitHubRepositoryMetadata> {
-		const { data } = await this.octokit.rest.repos.get({ owner, repo });
-		this.options.logger.debug("github.repository.accessed", {
-			installationId: this.options.installationId,
-		});
-		return {
-			id: data.id,
-			fullName: data.full_name,
-			defaultBranch: data.default_branch,
-			private: data.private,
-			archived: data.archived,
-			htmlUrl: data.html_url,
-		};
+		const target = `${owner}/${repo}`.toLowerCase();
+		for await (const response of this.octokit.paginate.iterator(
+			this.octokit.rest.apps.listReposAccessibleToInstallation,
+			{ per_page: 100 },
+		)) {
+			for (const item of response.data) {
+				if (item.full_name.toLowerCase() === target) {
+					this.options.logger.debug("github.repository.accessed", {
+						installationId: this.options.installationId,
+					});
+					return {
+						id: item.id,
+						fullName: item.full_name,
+						defaultBranch: item.default_branch,
+						private: item.private,
+						archived: item.archived,
+						htmlUrl: item.html_url,
+					};
+				}
+			}
+		}
+		throw new GitHubAppError("REPOSITORY_ACCESS_DENIED");
 	}
 
 	async checkReviewPermissions(): Promise<GitHubReviewPermissions> {

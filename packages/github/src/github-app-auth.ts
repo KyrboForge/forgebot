@@ -22,7 +22,7 @@ export interface IGitHubAppAuth {
 	getInstallationPermissions(
 		installationId: number,
 	): Promise<GitHubInstallationPermissions>;
-	invalidate(installationId: number): void;
+	invalidate(installationId: number, token: string): void;
 }
 
 export interface GitHubAppAuthOptions {
@@ -85,10 +85,12 @@ export class GitHubAppAuth implements IGitHubAppAuth {
 		return pending;
 	}
 
-	invalidate(installationId: number): void {
-		this.tokens.delete(installationId);
-		this.inFlight.delete(installationId);
-		this.logger.debug("github.app.token.invalidated", { installationId });
+	invalidate(installationId: number, token: string): void {
+		const cached = this.tokens.get(installationId);
+		if (cached && cached.token === token) {
+			this.tokens.delete(installationId);
+			this.logger.debug("github.app.token.invalidated", { installationId });
+		}
 	}
 
 	async getInstallationPermissions(

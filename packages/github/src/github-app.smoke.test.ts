@@ -9,7 +9,7 @@ import {
 describe.skipIf(process.env.FORGEBOT_GITHUB_SMOKE !== "1")(
 	"GitHub App smoke (read-only)",
 	() => {
-		it("verifies repository access, metadata and review permissions", async () => {
+		it("verifies installation repository selection, listed metadata and review permissions", async () => {
 			const config = await loadGitHubAppConfig(process.env);
 			if (config.installationId === undefined)
 				throw new Error("GITHUB_APP_INSTALLATION_ID is required");
