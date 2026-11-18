@@ -34,6 +34,46 @@ describe("chatgpt route", () => {
 		expect(res.status).toBe(403);
 	});
 
+	it("rejects an oversized streamed body without reading it all", async () => {
+		const service = new ChatGptTestActionService();
+		const limited = createChatGptRoute({
+			chatgptTokens: { writeToken: "w-token" },
+			chatgptTestActionService: service,
+		});
+		let pulls = 0;
+		const stream = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulls++;
+				controller.enqueue(new Uint8Array(1024));
+			},
+		});
+		const res = await limited.fetch(
+			new Request("http://localhost/test-actions", {
+				method: "POST",
+				headers: {
+					authorization: "Bearer w-token",
+					"content-type": "application/json",
+				},
+				body: stream,
+				duplex: "half",
+			} as RequestInit),
+		);
+		expect(res.status).toBe(400);
+		expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+			"invalid_request",
+		);
+		expect(pulls).toBeLessThan(10);
+	});
+
+	it("rejects an oversized Content-Length up front", async () => {
+		const res = await route.request("/test-actions", {
+			method: "POST",
+			headers: { authorization: "Bearer w-token", "content-length": "5000" },
+			body: "{}",
+		});
+		expect(res.status).toBe(400);
+	});
+
 	it("denies both routes with 503 when read and write tokens are equal", async () => {
 		const same = createChatGptRoute({
 			chatgptTokens: { readToken: "same", writeToken: "same" },

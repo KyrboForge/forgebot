@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { IChatGptTestActionService } from "../services/chatgpt-test-action.service.ts";
 
 export type ChatGptTokens = { readToken?: string; writeToken?: string };
@@ -72,39 +73,42 @@ export default function createChatGptRoute(deps: ChatGptRouteDependencies) {
 		});
 	});
 
-	route.post("/test-actions", async (c) => {
-		const denied = authorize(c.req.header("authorization"), true);
-		if (denied) return denied;
+	route.post(
+		"/test-actions",
+		(c, next) => authorize(c.req.header("authorization"), true) ?? next(),
+		bodyLimit({
+			maxSize: MAX_BODY_BYTES,
+			onError: () => error(400, "invalid_request", "Request body too large"),
+		}),
+		async (c) => {
+			const raw = await c.req.text();
+			let body: unknown;
+			try {
+				body = JSON.parse(raw);
+			} catch {
+				return error(400, "invalid_request", "Body must be valid JSON");
+			}
+			const input = parseTestAction(body);
+			if (!input) return error(400, "invalid_request", "Invalid request body");
 
-		const raw = await c.req.text();
-		if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES)
-			return error(400, "invalid_request", "Request body too large");
-		let body: unknown;
-		try {
-			body = JSON.parse(raw);
-		} catch {
-			return error(400, "invalid_request", "Body must be valid JSON");
-		}
-		const input = parseTestAction(body);
-		if (!input) return error(400, "invalid_request", "Invalid request body");
-
-		const result = deps.chatgptTestActionService.record(
-			input.requestId,
-			input.message,
-		);
-		if (result.status === "conflict")
-			return error(
-				409,
-				"request_id_conflict",
-				"requestId was already used with a different message",
+			const result = deps.chatgptTestActionService.record(
+				input.requestId,
+				input.message,
 			);
-		const { requestId, recordedAt } = result.record;
-		const duplicate = result.status === "duplicate";
-		return c.json(
-			{ requestId, status: "recorded", duplicate, recordedAt },
-			duplicate ? 200 : 201,
-		);
-	});
+			if (result.status === "conflict")
+				return error(
+					409,
+					"request_id_conflict",
+					"requestId was already used with a different message",
+				);
+			const { requestId, recordedAt } = result.record;
+			const duplicate = result.status === "duplicate";
+			return c.json(
+				{ requestId, status: "recorded", duplicate, recordedAt },
+				duplicate ? 200 : 201,
+			);
+		},
+	);
 
 	return route;
 }

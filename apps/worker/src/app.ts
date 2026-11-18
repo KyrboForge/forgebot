@@ -11,7 +11,13 @@ export default function createApp(deps: AppDependencies) {
 
 	app.route("/webhooks/github", createGitHubWebhookRoute(deps));
 
-	app.route("/api/chatgpt", createChatGptRoute(deps));
+	app.route(
+		"/api/chatgpt",
+		createChatGptRoute({
+			chatgptTokens: deps.chatgptTokens,
+			chatgptTestActionService: deps.chatgptTestActionService,
+		}),
+	);
 
 	return app;
 }
