@@ -34,12 +34,12 @@ Implemented:
 - logger
 - testing package
 - GitHub event mapping
+- GitHub App authentication
 - repository abstraction (in progress)
 - job abstraction (in progress)
 
 Not implemented yet:
 
-- GitHub App authentication
 - repository provider implementation
 - action model
 - queue

@@ -3,6 +3,7 @@ import { runPlugins } from "@forgebot/core";
 import { createMockLogger, createMockPlugin } from "@forgebot/testing";
 import createApp from "../../src/app.ts";
 import { GitHubWebhookService } from "../../src/services/github-webhook.service.ts";
+import { createGitHubClientFactory } from "./github-app.fixture.ts";
 
 describe("/github/webhook", () => {
 	const logger = createMockLogger();
@@ -16,6 +17,7 @@ describe("/github/webhook", () => {
 		runPlugins,
 	);
 	const app = createApp({
+		gitHubClientFactory: createGitHubClientFactory(),
 		gitHubWebhookService,
 	});
 	beforeEach(() => {
