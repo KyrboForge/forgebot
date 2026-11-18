@@ -13,6 +13,7 @@
 - [Project Context](./PROJECT_CONTEXT.md)
 - [ADRs](./adr/README.md)
 - [Current Decisions](./DECISIONS.md)
+- [Review input contracts](./REVIEW_INPUT.md)
 - [ChatGPT Sites feasibility spike](./spikes/chatgpt-sites-feasibility.md)
 
 ---
