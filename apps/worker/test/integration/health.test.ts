@@ -1,9 +1,12 @@
 import { describe, expect, it, mock } from "bun:test";
 import createApp from "../../src/app.ts";
+import { ChatGptTestActionService } from "../../src/services/chatgpt-test-action.service.ts";
 import { createGitHubClientFactory } from "./github-app.fixture.ts";
 
 describe("/health", () => {
 	const app = createApp({
+		chatgptTokens: {},
+		chatgptTestActionService: new ChatGptTestActionService(),
 		gitHubClientFactory: createGitHubClientFactory(),
 		gitHubWebhookService: {
 			handleWebhook: mock(),

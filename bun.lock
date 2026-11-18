@@ -11,6 +11,12 @@
         "typescript": "^7.0.2",
       },
     },
+    "apps/chatgpt-plugin": {
+      "name": "@forgebot/chatgpt-plugin",
+      "dependencies": {
+        "hono": "^4.12.27",
+      },
+    },
     "apps/worker": {
       "name": "@forgebot/worker",
       "dependencies": {
@@ -102,6 +108,8 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.5.3", "", { "os": "win32", "cpu": "arm64" }, "sha512-cX5z+GYwRcqEok0AH3KSfQGgqYd0Nomfp6Fbe1uiTtELE38hdH2k842wQ9wLNaF/JJ7r4rjJQ4VR+ce+fRmQbw=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.3", "", { "os": "win32", "cpu": "x64" }, "sha512-ExSaJWi4/u6+GXCszlSKpWSjKNbDseAYqqkCznsCsZ/4uidZ/BEqsCc5/3ctlq6dfIubdIIRSVLC/PG9xPl70Q=="],
+
+    "@forgebot/chatgpt-plugin": ["@forgebot/chatgpt-plugin@workspace:apps/chatgpt-plugin"],
 
     "@forgebot/config": ["@forgebot/config@workspace:packages/config"],
 

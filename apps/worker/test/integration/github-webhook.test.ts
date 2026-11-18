@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { runPlugins } from "@forgebot/core";
 import { createMockLogger, createMockPlugin } from "@forgebot/testing";
 import createApp from "../../src/app.ts";
+import { ChatGptTestActionService } from "../../src/services/chatgpt-test-action.service.ts";
 import { GitHubWebhookService } from "../../src/services/github-webhook.service.ts";
 import { createGitHubClientFactory } from "./github-app.fixture.ts";
 
@@ -17,6 +18,8 @@ describe("/github/webhook", () => {
 		runPlugins,
 	);
 	const app = createApp({
+		chatgptTokens: {},
+		chatgptTestActionService: new ChatGptTestActionService(),
 		gitHubClientFactory: createGitHubClientFactory(),
 		gitHubWebhookService,
 	});
