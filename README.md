@@ -30,6 +30,7 @@ Project documentation is available in the [`docs`](./docs) directory.
 - 🤖 [AI Context](./docs/AI_CONTEXT.md)
 - [GitHub App setup](./docs/GITHUB_APP.md)
 - [GitHub PR review publisher](./docs/REVIEW_PUBLISHER.md)
+- [Review input contracts](./docs/REVIEW_INPUT.md)
 
 ## Project Structure
 ```mermaid

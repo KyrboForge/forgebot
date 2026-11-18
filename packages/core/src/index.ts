@@ -7,3 +7,13 @@ export type {
 export type { ForgeBotPlugin } from "./plugin.ts";
 export { type RunPluginsFn, runPlugins } from "./plugin-runner.ts";
 export type { PluginResult, PluginResultStatus } from "./result.ts";
+export type {
+	ChangedFile,
+	ChangedFileListing,
+	ChangeIdentity,
+	ContentAvailability,
+	RepositoryIdentity,
+	ReviewInput,
+	RevisionReference,
+	SourceSlice,
+} from "./review-input.ts";
