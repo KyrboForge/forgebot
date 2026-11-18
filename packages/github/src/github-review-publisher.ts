@@ -26,6 +26,7 @@ export interface PublishReviewInput {
 	readonly repo: string;
 	readonly pullNumber: number;
 	readonly commitSha: string;
+	readonly baseSha: string;
 	readonly verdict: ReviewVerdict;
 	readonly body: string;
 	readonly comments: InlineReviewComment[];
@@ -93,6 +94,7 @@ export class GitHubReviewPublisher implements IGitHubReviewPublisher {
 			repo,
 			pullNumber,
 			commitSha,
+			baseSha,
 			verdict,
 			body,
 			comments,
@@ -103,6 +105,7 @@ export class GitHubReviewPublisher implements IGitHubReviewPublisher {
 			repo.toLowerCase(),
 			pullNumber,
 			commitSha,
+			baseSha,
 			verdict,
 			body,
 			comments.map(({ path, line, side, body, startLine, startSide }) => [
@@ -235,20 +238,20 @@ function validSide(side: unknown): boolean {
 	return side === "LEFT" || side === "RIGHT";
 }
 
-function invalidFields(input: PublishReviewInput): string[] {
-	if (!input || typeof input !== "object") return ["input"];
+function validSha(value: unknown): boolean {
+	return (
+		typeof value === "string" && value.length === 40 && !/[^0-9a-f]/.test(value)
+	);
+}
+
+function invalidHeaderFields(input: PublishReviewInput): string[] {
 	const fields: string[] = [];
 	if (!positiveInteger(input.installationId)) fields.push("installationId");
 	if (!validRepositorySegment(input.owner)) fields.push("owner");
 	if (!validRepositorySegment(input.repo)) fields.push("repo");
 	if (!positiveInteger(input.pullNumber)) fields.push("pullNumber");
-	if (
-		typeof input.commitSha !== "string" ||
-		input.commitSha.length !== 40 ||
-		/[^0-9a-f]/.test(input.commitSha)
-	) {
-		fields.push("commitSha");
-	}
+	if (!validSha(input.commitSha)) fields.push("commitSha");
+	if (!validSha(input.baseSha)) fields.push("baseSha");
 	if (
 		input.verdict !== "APPROVE" &&
 		input.verdict !== "REQUEST_CHANGES" &&
@@ -256,47 +259,58 @@ function invalidFields(input: PublishReviewInput): string[] {
 	) {
 		fields.push("verdict");
 	}
+	return fields;
+}
+
+function invalidFields(input: PublishReviewInput): string[] {
+	if (!input || typeof input !== "object") return ["input"];
+	const fields = invalidHeaderFields(input);
 	if (!validBody(input.body, input.verdict === "APPROVE")) fields.push("body");
 	if (!Array.isArray(input.comments) || input.comments.length > 50) {
 		fields.push("comments");
 		return fields;
 	}
 	for (let index = 0; index < input.comments.length; index++) {
-		const comment: InlineReviewComment | undefined = input.comments[index];
-		const prefix = `comments[${index}]`;
-		if (!comment || typeof comment !== "object") {
-			fields.push(prefix);
-			continue;
-		}
-		const { path, line, side, body, startLine, startSide } = comment;
-		if (
-			typeof path !== "string" ||
-			!path.length ||
-			path.startsWith("/") ||
-			path.includes("\0") ||
-			path.split("/").includes("..")
-		)
-			fields.push(`${prefix}.path`);
-		if (!validBody(body)) fields.push(`${prefix}.body`);
-		if (!positiveInteger(line)) fields.push(`${prefix}.line`);
-		if (!validSide(side)) fields.push(`${prefix}.side`);
-		if (startLine !== undefined || startSide !== undefined) {
-			if (
-				startLine === undefined ||
-				!positiveInteger(startLine) ||
-				(startSide === side && startLine >= line)
-			) {
-				fields.push(`${prefix}.startLine`);
-			}
-			if (!validSide(startSide)) fields.push(`${prefix}.startSide`);
-		}
+		appendInvalidCommentFields(fields, input.comments[index], index);
 	}
 	return fields;
 }
 
+function appendInvalidCommentFields(
+	fields: string[],
+	comment: InlineReviewComment | undefined,
+	index: number,
+): void {
+	const prefix = `comments[${index}]`;
+	if (!comment || typeof comment !== "object") {
+		fields.push(prefix);
+		return;
+	}
+	const { path, line, side, body, startLine, startSide } = comment;
+	if (
+		typeof path !== "string" ||
+		!path.length ||
+		path.startsWith("/") ||
+		path.includes("\0") ||
+		path.split("/").includes("..")
+	)
+		fields.push(`${prefix}.path`);
+	if (!validBody(body)) fields.push(`${prefix}.body`);
+	if (!positiveInteger(line)) fields.push(`${prefix}.line`);
+	if (!validSide(side)) fields.push(`${prefix}.side`);
+	if (startLine === undefined && startSide === undefined) return;
+	if (
+		startLine === undefined ||
+		!positiveInteger(startLine) ||
+		(startSide === side && startLine >= line)
+	)
+		fields.push(`${prefix}.startLine`);
+	if (!validSide(startSide)) fields.push(`${prefix}.startSide`);
+}
+
 async function verifyPullRequest(
 	client: IGitHubInstallationClient,
-	{ owner, repo, pullNumber, commitSha }: PublishReviewInput,
+	{ owner, repo, pullNumber, commitSha, baseSha }: PublishReviewInput,
 	previousBase?: { readonly sha: string; readonly ref: string },
 ) {
 	const pull = await client
@@ -316,6 +330,7 @@ async function verifyPullRequest(
 		throw new GitHubReviewError("PULL_REQUEST_CLOSED");
 	if (
 		pull.head.sha.toLowerCase() !== commitSha ||
+		pull.base.sha.toLowerCase() !== baseSha ||
 		(previousBase &&
 			(pull.base.sha !== previousBase.sha ||
 				pull.base.ref !== previousBase.ref))
@@ -406,12 +421,9 @@ function mapPublicationError(
 			return new GitHubReviewError(rejection.code, { cause });
 		case "INVALID_INLINE_COMMENT_LOCATION": {
 			const index = rejection.commentIndex;
-			const commentIndex =
-				index !== undefined && index < commentCount
-					? index
-					: commentCount === 1
-						? 0
-						: undefined;
+			let commentIndex: number | undefined;
+			if (index !== undefined && index < commentCount) commentIndex = index;
+			else if (commentCount === 1) commentIndex = 0;
 			return new GitHubReviewError(rejection.code, { cause, commentIndex });
 		}
 		case "INVALID_REVIEW_PAYLOAD":

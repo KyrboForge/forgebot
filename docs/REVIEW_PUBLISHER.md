@@ -30,6 +30,7 @@ const summary = {
 	repo: "demo",
 	pullNumber: 42,
 	commitSha: "0123456789abcdef0123456789abcdef01234567",
+	baseSha: "89abcdef0123456789abcdef0123456789abcdef",
 	verdict: "COMMENT",
 	body: "The implementation matches the migration plan.",
 	comments: [],
@@ -39,7 +40,7 @@ const published = await publisher.publishReview(summary);
 // published contains reviewId, url, commitSha and verdict from GitHub.
 ```
 
-Replace the example IDs and SHA with the installation, pull request number, and commit you actually reviewed. The SHA must contain exactly 40 lowercase hexadecimal characters. The publisher checks that the PR is open and its head matches before loading the diff. It reads the PR again after fetching the files and requires the head SHA, base SHA, and base branch to match the first read. The base affects diff anchors, including those on the left side. The POST carries the exact reviewed SHA.
+Replace the example IDs and SHAs with the installation, pull request number, and head and base commits you actually reviewed. Both `commitSha` and `baseSha` are required and must contain exactly 40 lowercase hexadecimal characters. The publisher checks that the PR is open and that its head and base SHAs match the reviewed ones before loading the diff. It reads the PR again after fetching the files and requires the head SHA, base SHA, and base branch to match the first read. The base affects diff anchors, including those on the left side. The POST carries the exact reviewed SHA.
 
 | Verdict | GitHub review state | Summary |
 | --- | --- | --- |
@@ -91,7 +92,7 @@ const changesRequested: PublishReviewInput = {
 | `INSUFFICIENT_PERMISSIONS` | The permission check failed. `missing` lists the missing grants, or is empty if GitHub denied the permission lookup. |
 | `PULL_REQUEST_NOT_FOUND` | GitHub returned 404 when fetching the pull request. |
 | `PULL_REQUEST_CLOSED` | The pull request is no longer open. |
-| `STALE_REVIEW_COMMIT` | The supplied SHA differs from the PR head, or the base SHA or branch changed while files were being fetched. Review the updated diff before submitting. |
+| `STALE_REVIEW_COMMIT` | The supplied head SHA differs from the PR head, the supplied base SHA differs from the PR base, or the base SHA or branch changed while files were being fetched. Review the updated diff before submitting. |
 | `INVALID_REVIEW_PAYLOAD` | Local validation or GitHub rejected the input. `fields` lists identifiable field names and can be empty for a generic GitHub response. |
 | `INVALID_INLINE_COMMENT_LOCATION` | An inline comment location failed diff validation. `commentIndex` is zero-based and may be absent when GitHub does not identify a specific comment. |
 | `REVIEW_VERDICT_REJECTED` | GitHub rejected the verdict, for example when an app tries to approve or request changes on its own PR. |

@@ -157,44 +157,74 @@ export function mapGitHubPullRequestError(
 	);
 }
 
-function classifyPullRequestRejection(
-	status: number,
-	data: { message?: unknown; errors?: unknown } | undefined,
-): PullRequestRejection | undefined {
+const OWN_REVIEW_MESSAGE =
+	/\b(?:can\s*not|can't)\s+(?:approve|request changes (?:on|for))\s+(?:your|their) own pull request\b/i;
+// Location diagnostics: "<subject> <problem>" or "<problem> <subject>".
+const LOCATION_SUBJECT =
+	"(?:lines?|path|diff(?: hunk)?|position|side|start_line|start_side)";
+const LOCATION_MESSAGES = [
+	new RegExp(
+		String.raw`\b${LOCATION_SUBJECT}\s+is (?:outside|invalid|not|missing)`,
+		"i",
+	),
+	new RegExp(
+		String.raw`\b${LOCATION_SUBJECT}\s+could(?: not|n't) be resolved`,
+		"i",
+	),
+	new RegExp(String.raw`\b${LOCATION_SUBJECT}\s+can(?:not|'t) be`, "i"),
+	new RegExp(String.raw`\b${LOCATION_SUBJECT}\s+(?:must|does not)\b`, "i"),
+	new RegExp(String.raw`\b(?:invalid|missing)\s+${LOCATION_SUBJECT}\b`, "i"),
+];
+
+type RejectionData = { message?: unknown; errors?: unknown } | undefined;
+
+function collectDiagnostics(data: RejectionData): {
+	messages: string[];
+	structuredFields: Set<unknown>;
+} {
 	const messages: string[] = [];
-	if (typeof data?.message === "string") messages.push(data.message);
 	const structuredFields = new Set<unknown>();
-	if (Array.isArray(data?.errors)) {
-		for (const detail of data.errors as unknown[]) {
-			if (typeof detail === "string") {
-				messages.push(detail);
-			} else if (detail && typeof detail === "object") {
-				const { field, message, resource, code } = detail as Record<
-					string,
-					unknown
-				>;
-				structuredFields.add(field);
-				if (
-					field === undefined &&
-					resource === "PullRequestReviewComment" &&
-					(code === "invalid" || code === "missing_field")
-				) {
-					structuredFields.add("comments");
-				}
-				if (typeof message === "string") messages.push(message);
-			}
+	if (typeof data?.message === "string") messages.push(data.message);
+	if (!Array.isArray(data?.errors)) return { messages, structuredFields };
+	for (const detail of data.errors as unknown[]) {
+		if (typeof detail === "string") {
+			messages.push(detail);
+		} else if (detail && typeof detail === "object") {
+			collectDetail(
+				detail as Record<string, unknown>,
+				messages,
+				structuredFields,
+			);
 		}
 	}
+	return { messages, structuredFields };
+}
+
+function collectDetail(
+	{ field, message, resource, code }: Record<string, unknown>,
+	messages: string[],
+	structuredFields: Set<unknown>,
+): void {
+	structuredFields.add(field);
+	if (
+		field === undefined &&
+		resource === "PullRequestReviewComment" &&
+		(code === "invalid" || code === "missing_field")
+	) {
+		structuredFields.add("comments");
+	}
+	if (typeof message === "string") messages.push(message);
+}
+
+function classifyPullRequestRejection(
+	status: number,
+	data: RejectionData,
+): PullRequestRejection | undefined {
+	const { messages, structuredFields } = collectDiagnostics(data);
 
 	// Classify the original diagnostics. Only fixed codes, fields and numeric
 	// indices can leave this function.
-	if (
-		messages.some((message) =>
-			/\b(?:can\s*not|can't)\s+(?:approve|request changes (?:on|for))\s+(?:your|their) own pull request\b/i.test(
-				message,
-			),
-		)
-	) {
+	if (messages.some((message) => OWN_REVIEW_MESSAGE.test(message))) {
 		return { code: "REVIEW_VERDICT_REJECTED" };
 	}
 
@@ -205,9 +235,7 @@ function classifyPullRequestRejection(
 		structuredFields.has(field),
 	);
 	const locationMessage = messages.find((message) =>
-		/\b(?:lines?|path|diff(?: hunk)?|position|side|start_line|start_side)\s+(?:is (?:outside|invalid|not|missing)|could(?: not|n't) be resolved|can(?:not|'t) be|must\b|does not\b)|\b(?:invalid|missing)\s+(?:lines?|path|diff(?: hunk)?|position|side|start_line|start_side)\b/i.test(
-			message,
-		),
+		LOCATION_MESSAGES.some((pattern) => pattern.test(message)),
 	);
 	if (inlineField || (!structuredPayloadFields.length && locationMessage)) {
 		const index = Number(

@@ -24,9 +24,9 @@ interface GitHubReviewErrorDetails {
 
 export class GitHubReviewError extends Error {
 	override readonly name = "GitHubReviewError";
-	override readonly cause?: GitHubReviewErrorDetails["cause"];
-	readonly missing?: GitHubReviewErrorDetails["missing"];
-	readonly fields?: GitHubReviewErrorDetails["fields"];
+	override readonly cause?: GitHubPullRequestErrorCause;
+	readonly missing?: readonly string[];
+	readonly fields?: readonly string[];
 	readonly commentIndex?: number;
 	readonly reviewId?: number;
 

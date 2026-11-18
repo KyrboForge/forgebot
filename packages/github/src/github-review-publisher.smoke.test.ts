@@ -79,7 +79,7 @@ async function publishSmokeReview(env: NodeJS.ProcessEnv): Promise<void> {
 	const auth = new GitHubAppAuth({ config, logger });
 	const clientFactory = new GitHubClientFactory({ auth, logger });
 	const client = clientFactory.forInstallation(config.installationId);
-	const { head } = await client.getPullRequest(owner, repo, pullNumber);
+	const { head, base } = await client.getPullRequest(owner, repo, pullNumber);
 	const publisher = new GitHubReviewPublisher({ clientFactory, logger });
 	const review = await publisher.publishReview({
 		installationId: config.installationId,
@@ -87,6 +87,7 @@ async function publishSmokeReview(env: NodeJS.ProcessEnv): Promise<void> {
 		repo,
 		pullNumber,
 		commitSha: head.sha.toLowerCase(),
+		baseSha: base.sha.toLowerCase(),
 		verdict: "COMMENT",
 		body: "ForgeBot smoke test. This comment verifies GitHub App review publication.",
 		comments: [],

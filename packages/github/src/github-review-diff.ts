@@ -24,7 +24,8 @@ export function parseReviewDiff(patch: string): ReviewDiffHunk[] {
 			rowIndex = 0;
 			continue;
 		}
-		if (!lines || row === "" || row.startsWith("\\ No newline")) continue;
+		if (!lines || row === "" || row.startsWith(String.raw`\ No newline`))
+			continue;
 		switch (row[0]) {
 			case " ":
 				lines.LEFT.set(oldLine++, rowIndex);

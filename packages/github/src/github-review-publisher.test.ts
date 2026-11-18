@@ -96,6 +96,7 @@ function setup(overrides?: RequestOverride, now?: () => number) {
 		repo: "repo",
 		pullNumber: 7,
 		commitSha: sha,
+		baseSha: "c".repeat(40),
 		verdict: "COMMENT",
 		body: "Review summary",
 		comments: [],
@@ -304,6 +305,25 @@ describe("GitHubReviewPublisher", () => {
 		expect(posts).toHaveLength(0);
 	});
 
+	it("rejects a LEFT comment when the base changed before publication", async () => {
+		const { publisher, input, posts, requests } = setup(({ url }) => {
+			if (url.pathname === prPath)
+				return json({ ...pr, base: { sha: nextSha, ref: "release" } });
+			if (url.pathname === `${prPath}/files`)
+				return json([{ ...textFile, patch: "@@ -11 +11 @@\n-other\n+new" }]);
+		});
+
+		await expect(
+			publisher.publishReview({
+				...input,
+				comments: [{ ...inline, side: "LEFT" }],
+			}),
+		).rejects.toMatchObject({ code: "STALE_REVIEW_COMMIT" });
+		expect(requests.filter((path) => path === prPath)).toHaveLength(1);
+		expect(requests).not.toContain(`${prPath}/files`);
+		expect(posts).toHaveLength(0);
+	});
+
 	it.each([
 		["sha", { ...pr.base, sha: nextSha }],
 		["ref", { ...pr.base, ref: "release" }],
@@ -475,6 +495,9 @@ describe("GitHubReviewPublisher", () => {
 		["commitSha", { commitSha: sha.toUpperCase() }],
 		["commitSha", { commitSha: sha.slice(1) }],
 		["commitSha", { commitSha: "z".repeat(40) }],
+		["baseSha", { baseSha: "C".repeat(40) }],
+		["baseSha", { baseSha: "c".repeat(39) }],
+		["baseSha", { baseSha: undefined }],
 		["verdict", { verdict: "PENDING" }],
 		["body", { body: 42 }],
 		["body", { body: "" }],
