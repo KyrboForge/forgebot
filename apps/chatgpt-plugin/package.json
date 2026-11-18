@@ -1,0 +1,16 @@
+{
+	"name": "@forgebot/chatgpt-plugin",
+	"private": true,
+	"module": "src/index.ts",
+	"type": "module",
+	"scripts": {
+		"lint": "biome check .",
+		"format": "biome format --write .",
+		"test": "bun test ./src",
+		"typecheck": "tsc --noEmit",
+		"start": "bun run src/index.ts"
+	},
+	"dependencies": {
+		"hono": "^4.12.27"
+	}
+}

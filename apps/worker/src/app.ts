@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppDependencies } from "./dependencies.ts";
+import createChatGptRoute from "./routes/chatgpt.route.ts";
 import createGitHubWebhookRoute from "./routes/github-webhook.route.ts";
 import createHealthRoute from "./routes/health.route.ts";
 
@@ -9,6 +10,14 @@ export default function createApp(deps: AppDependencies) {
 	app.route("/health", createHealthRoute());
 
 	app.route("/webhooks/github", createGitHubWebhookRoute(deps));
+
+	app.route(
+		"/api/chatgpt",
+		createChatGptRoute({
+			chatgptTokens: deps.chatgptTokens,
+			chatgptTestActionService: deps.chatgptTestActionService,
+		}),
+	);
 
 	return app;
 }

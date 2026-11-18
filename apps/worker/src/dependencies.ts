@@ -12,6 +12,11 @@ import {
 import createLogger, { type Logger } from "@forgebot/logger";
 import { createPluginsFromConfig } from "./plugins/create-plugins-from-config.ts";
 import { pluginRegistry } from "./plugins/plugin-registry.ts";
+import type { ChatGptTokens } from "./routes/chatgpt.route.ts";
+import {
+	ChatGptTestActionService,
+	type IChatGptTestActionService,
+} from "./services/chatgpt-test-action.service.ts";
 import {
 	GitHubWebhookService,
 	type IGitHubWebhookService,
@@ -74,7 +79,16 @@ export default async function createDependencies() {
 		runPlugins,
 	);
 
+	const chatgptTokens: ChatGptTokens = {
+		readToken: process.env.FORGEBOT_CHATGPT_READ_TOKEN || undefined,
+		writeToken: process.env.FORGEBOT_CHATGPT_WRITE_TOKEN || undefined,
+	};
+	const chatgptTestActionService: IChatGptTestActionService =
+		new ChatGptTestActionService();
+
 	return {
+		chatgptTokens,
+		chatgptTestActionService,
 		gitHubClientFactory,
 		gitHubWebhookService,
 	};
