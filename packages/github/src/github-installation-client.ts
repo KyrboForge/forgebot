@@ -1,6 +1,10 @@
 import type { Logger } from "@forgebot/logger";
 import { Octokit } from "@octokit/rest";
-import { GitHubAppError, mapGitHubAppError } from "./github-app.error.ts";
+import {
+	GitHubAppError,
+	mapGitHubAppError,
+	mapGitHubPullRequestError,
+} from "./github-app.error.ts";
 import type {
 	GitHubFetch,
 	GitHubInstallationPermissions,
@@ -22,10 +26,60 @@ export interface GitHubReviewPermissions {
 	readonly granted: GitHubInstallationPermissions;
 }
 
+interface GitHubPullRequest {
+	readonly state: string;
+	readonly head: { readonly sha: string };
+	readonly base: { readonly sha: string; readonly ref: string };
+}
+
+interface GitHubPullRequestFile {
+	readonly filename: string;
+	readonly patch?: string;
+	readonly status: string;
+	readonly previous_filename?: string;
+}
+
+interface CreateGitHubReview {
+	readonly commit_id: string;
+	readonly event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+	readonly body: string;
+	readonly comments: {
+		path: string;
+		line: number;
+		side: "LEFT" | "RIGHT";
+		start_line?: number;
+		start_side?: "LEFT" | "RIGHT";
+		body: string;
+	}[];
+}
+
+interface GitHubReviewResponse {
+	readonly id: number;
+	readonly html_url: string;
+	readonly commit_id: string | null;
+	readonly state: string;
+}
+
 export interface IGitHubInstallationClient {
 	verifyRepositoryAccess(owner: string, repo: string): Promise<void>;
 	getRepository(owner: string, repo: string): Promise<GitHubRepositoryMetadata>;
 	checkReviewPermissions(): Promise<GitHubReviewPermissions>;
+	getPullRequest(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+	): Promise<GitHubPullRequest>;
+	listPullRequestFiles(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+	): Promise<GitHubPullRequestFile[]>;
+	createReview(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+		review: CreateGitHubReview,
+	): Promise<GitHubReviewResponse>;
 }
 
 export interface GitHubInstallationClientOptions {
@@ -59,6 +113,10 @@ export class GitHubInstallationClient implements IGitHubInstallationClient {
 			} catch (error) {
 				if ((error as { status?: number } | null)?.status === 401) {
 					options.auth.invalidate(options.installationId, token);
+				}
+				const path = new URL(endpoint.url, endpoint.baseUrl).pathname;
+				if (/^\/repos\/[^/]+\/[^/]+\/pulls\//.test(path)) {
+					throw mapGitHubPullRequestError(error);
 				}
 				throw mapGitHubAppError(error, "repository");
 			}
@@ -115,5 +173,69 @@ export class GitHubInstallationClient implements IGitHubInstallationClient {
 			installationId: this.options.installationId,
 		});
 		return { ok: missing.length === 0, missing, granted };
+	}
+
+	async getPullRequest(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+	): Promise<GitHubPullRequest> {
+		const { data } = await this.octokit.rest.pulls.get({
+			owner,
+			repo,
+			pull_number: pullNumber,
+		});
+		return {
+			state: data.state,
+			head: { sha: data.head.sha },
+			base: { sha: data.base.sha, ref: data.base.ref },
+		};
+	}
+
+	listPullRequestFiles(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+	): Promise<GitHubPullRequestFile[]> {
+		return this.octokit.paginate(this.octokit.rest.pulls.listFiles, {
+			owner,
+			repo,
+			pull_number: pullNumber,
+			per_page: 100,
+		});
+	}
+
+	async createReview(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+		review: CreateGitHubReview,
+	): Promise<GitHubReviewResponse> {
+		const { data } = await this.octokit.rest.pulls.createReview({
+			...review,
+			owner,
+			repo,
+			pull_number: pullNumber,
+			// A 307 or 308 redirect could replay the POST.
+			request: { redirect: "error" },
+		});
+		return data;
+	}
+
+	async getReview(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+		reviewId: number,
+	): Promise<{ user: { type: string; login: string } | null }> {
+		const { data } = await this.octokit.rest.pulls.getReview({
+			owner,
+			repo,
+			pull_number: pullNumber,
+			review_id: reviewId,
+		});
+		return {
+			user: data.user && { type: data.user.type, login: data.user.login },
+		};
 	}
 }

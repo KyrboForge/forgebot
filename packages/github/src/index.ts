@@ -28,6 +28,19 @@ export {
 	type GitHubReviewPermissions,
 	type IGitHubInstallationClient,
 } from "./github-installation-client.ts";
+export {
+	GitHubReviewError,
+	type GitHubReviewErrorCode,
+} from "./github-review.error.ts";
+export {
+	GitHubReviewPublisher,
+	type GitHubReviewPublisherOptions,
+	type IGitHubReviewPublisher,
+	type InlineReviewComment,
+	type PublishedReview,
+	type PublishReviewInput,
+	type ReviewVerdict,
+} from "./github-review-publisher.ts";
 export type {
 	GitHubPullRequestAction,
 	GitHubWebhookEventName,
