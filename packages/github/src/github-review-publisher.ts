@@ -77,12 +77,14 @@ export class GitHubReviewPublisher implements IGitHubReviewPublisher {
 			});
 		} catch (error) {
 			const failure = mapReviewError(error);
-			this.options.logger.warn("github.review.publication.failed", {
-				installationId: positiveInteger(input?.installationId)
-					? input.installationId
-					: undefined,
-				code: failure.code,
-			});
+			logSafely(() =>
+				this.options.logger.warn("github.review.publication.failed", {
+					installationId: positiveInteger(input?.installationId)
+						? input.installationId
+						: undefined,
+					code: failure.code,
+				}),
+			);
 			throw failure;
 		}
 	}
@@ -189,17 +191,26 @@ export class GitHubReviewPublisher implements IGitHubReviewPublisher {
 			// Reinsert in publication order, independent of when preflight started.
 			submissions.delete(key);
 			submissions.set(key, published);
-			this.options.logger.info("github.review.published", {
-				installationId,
-				reviewId: published.reviewId,
-				verdict: published.verdict,
-				commentCount: comments.length,
-			});
+			logSafely(() =>
+				this.options.logger.info("github.review.published", {
+					installationId,
+					reviewId: published.reviewId,
+					verdict: published.verdict,
+					commentCount: comments.length,
+				}),
+			);
 			return published;
 		} finally {
 			if (!retainSubmission) submissions.delete(key);
 		}
 	}
+}
+
+// Logging must never replace a mapped failure or turn a published review into an error.
+function logSafely(log: () => void): void {
+	try {
+		log();
+	} catch {}
 }
 
 function evictOldestSuccess(): void {

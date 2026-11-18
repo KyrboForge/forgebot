@@ -214,6 +214,28 @@ describe("GitHubReviewPublisher", () => {
 		expect(logger.info).not.toHaveBeenCalled();
 	});
 
+	it("keeps the outcome when logging throws", async () => {
+		const throwing = () => {
+			throw new Error("log sink failed");
+		};
+		const { clientFactory, logger, input, posts } = setup();
+		const publisher = new GitHubReviewPublisher({
+			clientFactory,
+			logger: { ...logger, info: throwing, warn: throwing },
+		});
+
+		await expect(publisher.publishReview(input)).resolves.toMatchObject({
+			reviewId: 27,
+		});
+		await expect(publisher.publishReview(input)).resolves.toMatchObject({
+			reviewId: 27,
+		});
+		await expect(
+			publisher.publishReview({ ...input, commitSha: "z".repeat(40) }),
+		).rejects.toMatchObject({ code: "INVALID_REVIEW_PAYLOAD" });
+		expect(posts).toHaveLength(1);
+	});
+
 	it("rejects an unexpected response state and blocks a duplicate POST", async () => {
 		const { publisher, input, posts } = setup(({ url }) =>
 			url.pathname.endsWith("/reviews")
