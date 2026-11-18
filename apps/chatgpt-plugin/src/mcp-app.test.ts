@@ -23,6 +23,7 @@ function setup(
 		apiUrl: "https://api.example.test",
 		readToken: "READ",
 		writeToken: "WRITE",
+		pluginToken: "PLUGIN",
 		fetch: ((url: string, init: RequestInit) => {
 			const call = { url, init };
 			calls.push(call);
@@ -33,7 +34,11 @@ function setup(
 	const rpc = async (body: unknown, headers: Record<string, string> = {}) =>
 		app.request("/mcp", {
 			method: "POST",
-			headers: { "content-type": "application/json", ...headers },
+			headers: {
+				"content-type": "application/json",
+				authorization: "Bearer PLUGIN",
+				...headers,
+			},
 			body: typeof body === "string" ? body : JSON.stringify(body),
 		});
 	const call = async (name: string, args: unknown) => {
@@ -159,7 +164,8 @@ describe("inbound auth", () => {
 	const ping = { jsonrpc: "2.0", id: 1, method: "ping" };
 	test("missing/invalid -> 401, valid ok", async () => {
 		const { rpc } = setup(undefined, { pluginToken: "secret" });
-		expect((await rpc(ping)).status).toBe(401);
+		const none = { authorization: "" };
+		expect((await rpc(ping, none)).status).toBe(401);
 		expect((await rpc(ping, { authorization: "Bearer wrong" })).status).toBe(
 			401,
 		);
@@ -169,6 +175,67 @@ describe("inbound auth", () => {
 		expect((await rpc(ping, { authorization: "Bearer secret" })).status).toBe(
 			200,
 		);
+	});
+});
+
+describe("inbound auth regression", () => {
+	test("tools/call without or with wrong token -> 401, no backend call", async () => {
+		const { rpc, calls } = setup();
+		const body = {
+			jsonrpc: "2.0",
+			id: 1,
+			method: "tools/call",
+			params: { name: "create_test_action", arguments: REQ },
+		};
+		expect((await rpc(body, { authorization: "" })).status).toBe(401);
+		expect((await rpc(body, { authorization: "Bearer wrong" })).status).toBe(
+			401,
+		);
+		expect(calls).toHaveLength(0);
+	});
+});
+
+describe("envelope and notifications", () => {
+	const callBody = {
+		method: "tools/call",
+		params: { name: "create_test_action", arguments: REQ },
+	};
+	test("wrong jsonrpc version -> -32600, no fetch", async () => {
+		const { rpc, calls } = setup();
+		const body: Rpc = await (
+			await rpc({ jsonrpc: "1.0", id: 1, ...callBody })
+		).json();
+		expect(body.error.code).toBe(-32600);
+		expect(body.id).toBeNull();
+		expect(calls).toHaveLength(0);
+	});
+
+	test("invalid id types -> -32600, no fetch", async () => {
+		const { rpc, calls } = setup();
+		for (const id of [{}, [], null, true]) {
+			const body: Rpc = await (
+				await rpc({ jsonrpc: "2.0", id, ...callBody })
+			).json();
+			expect(body.error.code).toBe(-32600);
+		}
+		expect(calls).toHaveLength(0);
+	});
+
+	test("notifications/cancelled -> 202 empty", async () => {
+		const { rpc } = setup();
+		const res = await rpc({
+			jsonrpc: "2.0",
+			method: "notifications/cancelled",
+		});
+		expect(res.status).toBe(202);
+		expect(await res.text()).toBe("");
+	});
+
+	test("tools/call without id -> 202, no fetch", async () => {
+		const { rpc, calls } = setup();
+		const res = await rpc({ jsonrpc: "2.0", ...callBody });
+		expect(res.status).toBe(202);
+		expect(calls).toHaveLength(0);
 	});
 });
 
@@ -198,6 +265,17 @@ describe("get_forgebot_status", () => {
 		const body = await call("get_forgebot_status", {});
 		expect(body.result.isError).toBe(true);
 		expect(JSON.stringify(body)).not.toContain("READ");
+	});
+
+	test("unknown backend error code is not echoed", async () => {
+		const secret = "0123456789abcdef".repeat(4);
+		const { call } = setup(() =>
+			json({ error: { code: secret, message: "x" } }, 500),
+		);
+		const body = await call("get_forgebot_status", {});
+		expect(body.result.isError).toBe(true);
+		expect(body.result.content[0].text).not.toContain(secret);
+		expect(body.result.content[0].text).toContain("HTTP 500");
 	});
 
 	test("malformed shape -> isError", async () => {
@@ -284,6 +362,7 @@ describe("create_test_action", () => {
 			apiUrl: "https://api.example.test",
 			readToken: "R",
 			writeToken: "W",
+			pluginToken: "PLUGIN",
 			timeoutMs: 20,
 			fetch: ((_u: string, init: RequestInit) =>
 				new Promise((_, reject) => {
@@ -294,6 +373,7 @@ describe("create_test_action", () => {
 		});
 		const res = await app.request("/mcp", {
 			method: "POST",
+			headers: { authorization: "Bearer PLUGIN" },
 			body: JSON.stringify({
 				jsonrpc: "2.0",
 				id: 1,

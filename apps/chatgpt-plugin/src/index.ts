@@ -8,6 +8,13 @@ if (!apiUrl || !readToken || !writeToken) {
 		"FORGEBOT_API_URL, FORGEBOT_CHATGPT_READ_TOKEN and FORGEBOT_CHATGPT_WRITE_TOKEN are required",
 	);
 }
+const pluginToken = process.env.FORGEBOT_PLUGIN_TOKEN;
+if (!pluginToken) throw new Error("FORGEBOT_PLUGIN_TOKEN is required");
+if (readToken === writeToken) {
+	throw new Error(
+		"FORGEBOT_CHATGPT_READ_TOKEN and FORGEBOT_CHATGPT_WRITE_TOKEN must differ",
+	);
+}
 const { protocol, hostname } = new URL(apiUrl);
 if (
 	protocol !== "https:" &&
@@ -20,7 +27,7 @@ const app = createMcpApp({
 	apiUrl,
 	readToken,
 	writeToken,
-	pluginToken: process.env.FORGEBOT_PLUGIN_TOKEN || undefined,
+	pluginToken,
 });
 
 export default { port: Number(process.env.PORT ?? 3000), fetch: app.fetch };

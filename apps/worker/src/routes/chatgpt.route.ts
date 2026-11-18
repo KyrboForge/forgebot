@@ -49,6 +49,8 @@ export default function createChatGptRoute(deps: ChatGptRouteDependencies) {
 
 	// Returns an error Response, or undefined when authorized.
 	const authorize = (header: string | undefined, writeOnly: boolean) => {
+		if (readToken && readToken === writeToken)
+			return error(503, "not_configured", "Endpoint is not configured");
 		if (writeOnly ? !writeToken : !readToken && !writeToken)
 			return error(503, "not_configured", "Endpoint is not configured");
 		const token = header?.match(BEARER_PATTERN)?.[1];

@@ -5,13 +5,20 @@ export type McpAppOptions = {
 	apiUrl: string;
 	readToken: string;
 	writeToken: string;
-	pluginToken?: string;
+	pluginToken: string;
 	fetch?: typeof fetch;
 	timeoutMs?: number;
 };
 
 const PROTOCOL_VERSION = "2025-06-18";
 const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
+const PUBLIC_ERROR_CODES = new Set([
+	"unauthorized",
+	"forbidden",
+	"not_configured",
+	"invalid_request",
+	"request_id_conflict",
+]);
 
 const statusSchema = {
 	type: "object",
@@ -96,7 +103,8 @@ class InvalidParams extends Error {}
 export function createMcpApp(opts: McpAppOptions) {
 	const doFetch = opts.fetch ?? fetch;
 	const timeoutMs = opts.timeoutMs ?? 5000;
-	const base = opts.apiUrl.replace(/\/+$/, "");
+	let base = opts.apiUrl;
+	while (base.endsWith("/")) base = base.slice(0, -1);
 
 	// Only these two fixed backend paths are ever called; no generic proxy.
 	async function backend(
@@ -118,14 +126,14 @@ export function createMcpApp(opts: McpAppOptions) {
 			});
 			const data: unknown = await res.json().catch(() => undefined);
 			if (!res.ok) {
+				const rawCode =
+					isObject(data) && isObject(data.error) ? data.error.code : undefined;
 				const code =
-					isObject(data) &&
-					isObject(data.error) &&
-					typeof data.error.code === "string"
-						? data.error.code.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64)
+					typeof rawCode === "string" && PUBLIC_ERROR_CODES.has(rawCode)
+						? `, ${rawCode}`
 						: "";
 				return toolError(
-					`ForgeBot API request failed (HTTP ${res.status}${code ? `, ${code}` : ""}).`,
+					`ForgeBot API request failed (HTTP ${res.status}${code}).`,
 				);
 			}
 			if (!isObject(data) || !valid(data)) {
@@ -189,13 +197,11 @@ export function createMcpApp(opts: McpAppOptions) {
 	const app = new Hono();
 	app.all("/mcp", async (c) => {
 		if (c.req.method !== "POST") return c.body(null, 405, { Allow: "POST" });
-		// Sites normally handles sign-in between ChatGPT and the MCP server, so this is
-		// defense in depth for non-Sites hosting. Origin/CORS are NOT auth.
-		if (opts.pluginToken !== undefined) {
-			const m = /^Bearer (.+)$/.exec(c.req.header("authorization") ?? "");
-			if (!m?.[1] || !sameToken(m[1], opts.pluginToken)) {
-				return c.json({ error: "unauthorized" }, 401);
-			}
+		// The inbound token is required (fail closed). Sites plugins should use the
+		// api_key auth type to send it as a Bearer. Origin/CORS are NOT auth.
+		const m = /^Bearer (.+)$/.exec(c.req.header("authorization") ?? "");
+		if (!m?.[1] || !sameToken(m[1], opts.pluginToken)) {
+			return c.json({ error: "unauthorized" }, 401);
 		}
 		const err = (id: unknown, code: number, message: string) =>
 			c.json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
@@ -209,6 +215,14 @@ export function createMcpApp(opts: McpAppOptions) {
 		if (!isObject(msg) || typeof msg.method !== "string") {
 			return err(null, -32600, "Invalid Request");
 		}
+		if (
+			msg.jsonrpc !== "2.0" ||
+			("id" in msg && typeof msg.id !== "string" && typeof msg.id !== "number")
+		) {
+			return err(null, -32600, "Invalid Request");
+		}
+		// Notifications (no id) are acknowledged and never dispatched.
+		if (!("id" in msg)) return c.body(null, 202);
 		const { id, method, params } = msg;
 		const ok = (result: unknown) => c.json({ jsonrpc: "2.0", id, result });
 
@@ -219,8 +233,6 @@ export function createMcpApp(opts: McpAppOptions) {
 					capabilities: { tools: {} },
 					serverInfo: { name: "forgebot-chatgpt-plugin", version: "0.1.0" },
 				});
-			case "notifications/initialized":
-				return c.body(null, 202);
 			case "ping":
 				return ok({});
 			case "tools/list":

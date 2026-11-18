@@ -67,7 +67,8 @@ The plugin's MCP endpoint and the ForgeBot API were run together over real HTTP,
 | Extra argument such as `repository` | rejected locally, **no backend call** |
 | Arbitrary GitHub access (`/api/chatgpt/repos/...`, `/reviews`) | 404; the route is never given the GitHub client factory (integration test uses a throwing proxy and still gets 201) |
 | Backend down / timeout / malformed response | `isError` tool result with a sanitized message, no leaked detail |
-| Inbound plugin token (optional) missing | 401 |
+| Inbound plugin token missing or wrong | 401, no backend call |
+| Read and write tokens equal | worker 503 `not_configured`; plugin refuses to start |
 
 ## 5. Authentication and design
 
@@ -75,7 +76,7 @@ The plugin's MCP endpoint and the ForgeBot API were run together over real HTTP,
 ChatGPT Plus → Site-hosted MCP plugin (apps/chatgpt-plugin) → ForgeBot API (/api/chatgpt/*) → (nothing else)
 ```
 
-- **ChatGPT → plugin:** Sites sign-in. Optionally also `FORGEBOT_PLUGIN_TOKEN` (Bearer, constant-time compared) on `POST /mcp`. CORS/Origin are not used as authentication.
+- **ChatGPT → plugin:** `FORGEBOT_PLUGIN_TOKEN` is **required** (Bearer, constant-time compared) on `POST /mcp`; the plugin refuses to start without it. Configure the Sites plugin with the `api_key` auth type so it sends this token. CORS/Origin are not used as authentication.
 - **Plugin → API:** server-side Bearer tokens only. Separate **read** token (`GET /status`) and **write** token (`POST /test-actions`). The write token also satisfies reads; the read token on a write is 403. Tokens live in server environment / Site secrets, never in client code, tool output or the repo.
 - **Write safety:** strict schema (`requestId` `^[A-Za-z0-9_-]{8,64}$`, `message` 1–200 chars, no extra keys), idempotent by `requestId`, result is an in-memory simulated record. It **never touches GitHub** and the API route does not receive the GitHub client factory.
 - **No generic proxy:** the plugin can call exactly two fixed backend paths.
@@ -88,10 +89,10 @@ ChatGPT Plus → Site-hosted MCP plugin (apps/chatgpt-plugin) → ForgeBot API (
 | `FORGEBOT_CHATGPT_READ_TOKEN` | worker + plugin | read token (unset → routes return 503) |
 | `FORGEBOT_CHATGPT_WRITE_TOKEN` | worker + plugin | write token (unset → write route 503) |
 | `FORGEBOT_API_URL` | plugin | worker base URL; must be `https://` (or `http://localhost` / `127.0.0.1`) |
-| `FORGEBOT_PLUGIN_TOKEN` | plugin, optional | extra Bearer check on `POST /mcp` |
+| `FORGEBOT_PLUGIN_TOKEN` | plugin, required | inbound Bearer check on `POST /mcp` (startup fails if unset) |
 | `PORT` | plugin, optional | default 3000 |
 
-Generate tokens with e.g. `openssl rand -hex 32`; use different values for read and write.
+Generate tokens with e.g. `openssl rand -hex 32`; the read and write tokens **must differ**: the worker returns 503 and the plugin refuses to start otherwise.
 
 ## 6. Install and manual verification steps
 
@@ -105,7 +106,7 @@ Run these yourself; the spike could not.
 **Create and publish the Site plugin** (UI wording may differ; Sites is in beta)
 
 3. In ChatGPT (or Codex), ask it to create a Site that hosts an MCP server, giving it `apps/chatgpt-plugin/src/mcp-app.ts` and `src/index.ts` as the source. The server is `POST /mcp`.
-4. In the Site settings, add secrets `FORGEBOT_API_URL`, `FORGEBOT_CHATGPT_READ_TOKEN`, `FORGEBOT_CHATGPT_WRITE_TOKEN` (and optionally `FORGEBOT_PLUGIN_TOKEN`).
+4. In the Site settings, add secrets `FORGEBOT_API_URL`, `FORGEBOT_CHATGPT_READ_TOKEN`, `FORGEBOT_CHATGPT_WRITE_TOKEN` and `FORGEBOT_PLUGIN_TOKEN`. Configure the plugin with `api_key` auth that sends `FORGEBOT_PLUGIN_TOKEN` as a Bearer token.
 5. Publish the Site, then install the plugin from the card that appears. Record the plan shown for your account.
 6. After any later tool change, **republish**.
 

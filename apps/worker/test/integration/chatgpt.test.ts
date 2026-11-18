@@ -97,6 +97,16 @@ describe("POST /api/chatgpt/test-actions", () => {
 		expect(service.record).not.toHaveBeenCalled();
 	});
 
+	it("returns 503 and records nothing when read and write tokens are equal", async () => {
+		const service = { record: mock() };
+		const res = await setup(
+			{ readToken: READ, writeToken: READ },
+			service,
+		).post(valid, READ);
+		expect(res.status).toBe(503);
+		expect(service.record).not.toHaveBeenCalled();
+	});
+
 	it("rejects invalid payloads with 400 and never echoes input", async () => {
 		const service = { record: mock() };
 		const { post } = setup(undefined, service);
