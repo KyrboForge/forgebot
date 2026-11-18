@@ -79,6 +79,8 @@ const permissions = await client.checkReviewPermissions();
 
 Tokens are cached per installation and refreshed below five minutes remaining. Concurrent requests share one token request per installation. A repository API 401 invalidates the cached token only if it matches the token sent by the failed request. A newer cached token or in-flight renewal survives a delayed 401. The error is returned; the next call reuses a valid token or obtains a fresh one. There is no automatic replay of failed API requests.
 
+Set `FORGEBOT_SMOKE_REVIEW_CONFIRM` to the exact pull request target before running the publication smoke test, for example `owner/repo#42`. See the [GitHub PR review publisher guide](./REVIEW_PUBLISHER.md).
+
 ## Deployment and security
 
 Inject App credentials through your deployment's secret manager or environment. Alternatively, mount a private key as a read-only secret file and set `GITHUB_APP_PRIVATE_KEY_PATH`. Restrict file and process access; do not bake PEM files into images. Keep the machine clock synchronized for JWT signing.
@@ -87,4 +89,4 @@ To rotate a key, generate another key in the GitHub App settings, update the sec
 
 Errors have stable `GitHubAppError.code` values: `INVALID_CONFIG`, `INVALID_PRIVATE_KEY`, `BAD_CREDENTIALS`, `INSTALLATION_NOT_FOUND_OR_REVOKED`, `REPOSITORY_ACCESS_DENIED`, `INSUFFICIENT_PERMISSIONS`, `RATE_LIMITED`, and `GITHUB_API_ERROR`. A repository 404 can conceal missing access; confirm that the installation includes the repository. Check App ID/key pairing for app 401s, suspension/revocation for installation 403/404s, and GitHub rate limits for `RATE_LIMITED`.
 
-The layer discards upstream error messages, headers and bodies; causes retain only HTTP status. Logs contain action names, Installation IDs and expiry timestamps, never private keys, JWTs, tokens or Authorization headers. Do not add request/header dumps or log configuration objects. Installation tokens remain in memory and are never exposed over HTTP.
+App authentication and repository access errors discard upstream messages, headers and bodies. Their causes retain only HTTP status. Pull request errors can also retain a sanitized validation or conflict message. Logs contain action names, Installation IDs and expiry timestamps, never private keys, JWTs, tokens or Authorization headers. Do not add request/header dumps or log configuration objects. Installation tokens remain in memory and are never exposed over HTTP.
