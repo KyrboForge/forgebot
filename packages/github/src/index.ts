@@ -33,6 +33,12 @@ export {
 	type GitHubReviewErrorCode,
 } from "./github-review.error.ts";
 export {
+	DEFAULT_GITHUB_REVIEW_INPUT_LIMITS,
+	GitHubReviewInputReader,
+	type IGitHubReviewInputReader,
+	type ReadGitHubReviewInput,
+} from "./github-review-input-reader.ts";
+export {
 	GitHubReviewPublisher,
 	type GitHubReviewPublisherOptions,
 	type IGitHubReviewPublisher,

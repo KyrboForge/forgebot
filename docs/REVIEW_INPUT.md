@@ -39,4 +39,4 @@ Read the file at `SourceSlice.revision.id`. `startLine` and `endLine` describe t
 
 ## Integration
 
-Issue [#26](https://github.com/Obryko/forgebot/issues/26) covers mapping GitHub changed-file retrieval into `ReviewInput`. Issue [#43](https://github.com/Obryko/forgebot/issues/43) covers a bounded PR context and file-read service that reads `SourceSlice` at exact immutable revision IDs and enforces byte and read caps. Both are follow-up work. Issues #49–#53 track downstream consumers of these contracts.
+The [GitHub PR diff reader](./REVIEW_INPUT_READER.md) maps GitHub changed-file retrieval into `ReviewInput` ([#26](https://github.com/Obryko/forgebot/issues/26)). Issue [#43](https://github.com/Obryko/forgebot/issues/43) covers a bounded PR context and file-read service that reads `SourceSlice` at exact immutable revision IDs and enforces byte and read caps. Issues #49–#53 track downstream consumers of these contracts.

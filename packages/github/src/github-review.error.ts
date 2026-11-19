@@ -1,4 +1,7 @@
-import type { GitHubPullRequestErrorCause } from "./github-app.error.ts";
+import type {
+	GitHubPullRequestErrorCause,
+	GitHubRateLimit,
+} from "./github-app.error.ts";
 
 export type GitHubReviewErrorCode =
 	| "REPOSITORY_ACCESS_DENIED"
@@ -6,6 +9,10 @@ export type GitHubReviewErrorCode =
 	| "PULL_REQUEST_NOT_FOUND"
 	| "PULL_REQUEST_CLOSED"
 	| "STALE_REVIEW_COMMIT"
+	| "STALE_REVIEW_SNAPSHOT"
+	| "INVALID_REVIEW_INPUT"
+	| "INCOMPLETE_RETRIEVAL"
+	| "MALFORMED_RESPONSE"
 	| "INVALID_REVIEW_PAYLOAD"
 	| "INVALID_INLINE_COMMENT_LOCATION"
 	| "REVIEW_VERDICT_REJECTED"
@@ -20,10 +27,12 @@ interface GitHubReviewErrorDetails {
 	readonly fields?: readonly string[];
 	readonly commentIndex?: number;
 	readonly reviewId?: number;
+	readonly rateLimit?: GitHubRateLimit;
 }
 
 export class GitHubReviewError extends Error {
 	override readonly name = "GitHubReviewError";
+	declare readonly rateLimit?: GitHubRateLimit;
 	override readonly cause?: GitHubPullRequestErrorCause;
 	readonly missing?: readonly string[];
 	readonly fields?: readonly string[];
@@ -40,5 +49,6 @@ export class GitHubReviewError extends Error {
 		this.fields = details.fields;
 		this.commentIndex = details.commentIndex;
 		this.reviewId = details.reviewId;
+		if (details.rateLimit) this.rateLimit = details.rateLimit;
 	}
 }
