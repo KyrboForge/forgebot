@@ -32,11 +32,22 @@ interface GitHubPullRequest {
 	readonly base: { readonly sha: string; readonly ref: string };
 }
 
+interface GitHubPullRequestSnapshot {
+	readonly number: number;
+	readonly htmlUrl: string;
+	readonly changedFiles?: number;
+	readonly base: { readonly sha: string; readonly ref: string };
+	readonly head: { readonly sha: string; readonly ref: string };
+}
+
 interface GitHubPullRequestFile {
 	readonly filename: string;
 	readonly patch?: string;
 	readonly status: string;
 	readonly previous_filename?: string;
+	readonly additions?: number;
+	readonly deletions?: number;
+	readonly changes?: number;
 }
 
 interface CreateGitHubReview {
@@ -180,15 +191,63 @@ export class GitHubInstallationClient implements IGitHubInstallationClient {
 		repo: string,
 		pullNumber: number,
 	): Promise<GitHubPullRequest> {
-		const { data } = await this.octokit.rest.pulls.get({
-			owner,
-			repo,
-			pull_number: pullNumber,
-		});
+		const { data } = await this.requestPullRequest(owner, repo, pullNumber);
 		return {
 			state: data.state,
 			head: { sha: data.head.sha },
 			base: { sha: data.base.sha, ref: data.base.ref },
+		};
+	}
+
+	async getPullRequestSnapshot(
+		owner: string,
+		repo: string,
+		pullNumber: number,
+	): Promise<GitHubPullRequestSnapshot> {
+		const { data } = await this.requestPullRequest(owner, repo, pullNumber);
+		return {
+			number: data?.number,
+			htmlUrl: data?.html_url,
+			changedFiles: data?.changed_files,
+			base: { sha: data?.base?.sha, ref: data?.base?.ref },
+			head: { sha: data?.head?.sha, ref: data?.head?.ref },
+		};
+	}
+
+	private requestPullRequest(owner: string, repo: string, pullNumber: number) {
+		return this.octokit.rest.pulls.get({
+			owner,
+			repo,
+			pull_number: pullNumber,
+		});
+	}
+
+	async listPullRequestFilesPage({
+		owner,
+		repo,
+		pullNumber,
+		page,
+		perPage,
+	}: {
+		owner: string;
+		repo: string;
+		pullNumber: number;
+		page: number;
+		perPage: number;
+	}): Promise<{
+		files: readonly GitHubPullRequestFile[];
+		hasNextPage: boolean;
+	}> {
+		const response = await this.octokit.rest.pulls.listFiles({
+			owner,
+			repo,
+			pull_number: pullNumber,
+			page,
+			per_page: perPage,
+		});
+		return {
+			files: response.data,
+			hasNextPage: /<[^>]+>;\s*rel="next"/.test(response.headers.link ?? ""),
 		};
 	}
 

@@ -8,15 +8,23 @@ export type GitHubAppErrorCode =
 	| "RATE_LIMITED"
 	| "GITHUB_API_ERROR";
 
+export type GitHubRateLimit = Readonly<{
+	retryAfter?: number;
+	reset?: number;
+}>;
+
 export class GitHubAppError extends Error {
+	declare readonly rateLimit?: GitHubRateLimit;
 	override readonly name: string = "GitHubAppError";
 
 	constructor(
 		readonly code: GitHubAppErrorCode,
 		// Only sanitized metadata is retained, never the upstream RequestError.
 		override readonly cause?: Readonly<{ status: number }>,
+		rateLimit?: GitHubRateLimit,
 	) {
 		super(code);
+		if (rateLimit) this.rateLimit = rateLimit;
 	}
 }
 
@@ -81,7 +89,26 @@ export function mapGitHubAppError(
 	return new GitHubAppError(
 		code,
 		status === undefined ? undefined : { status },
+		code === "RATE_LIMITED" ? readRateLimit(headers) : undefined,
 	);
+}
+
+function readRateLimit(
+	headers: Record<string, string> | undefined,
+): GitHubRateLimit | undefined {
+	const retryAfter = numericHeader(headers?.["retry-after"]);
+	const reset = numericHeader(headers?.["x-ratelimit-reset"]);
+	if (retryAfter === undefined && reset === undefined) return undefined;
+	return {
+		...(retryAfter === undefined ? {} : { retryAfter }),
+		...(reset === undefined ? {} : { reset }),
+	};
+}
+
+function numericHeader(value: string | undefined): number | undefined {
+	if (!value || /[^0-9]/.test(value)) return undefined;
+	const number = Number(value);
+	return Number.isSafeInteger(number) ? number : undefined;
 }
 
 const INLINE_FIELDS = [
@@ -126,8 +153,9 @@ export class GitHubPullRequestRequestError extends GitHubAppError {
 		code: GitHubAppErrorCode,
 		override readonly cause?: GitHubPullRequestErrorCause,
 		readonly rejection?: PullRequestRejection,
+		rateLimit?: GitHubRateLimit,
 	) {
-		super(code, cause);
+		super(code, cause, rateLimit);
 	}
 }
 
@@ -154,6 +182,7 @@ export function mapGitHubPullRequestError(
 		mapped.code,
 		field === undefined ? { status } : { status, field },
 		rejection,
+		mapped.rateLimit,
 	);
 }
 
